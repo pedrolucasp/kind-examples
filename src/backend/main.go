@@ -25,12 +25,8 @@ func main() {
 		AllowedOrigins:   []string{"*"},
 	}))
 
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("I want a Camel Blue"))
-	})
-
 	r.Get("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("OK"))
+		w.Write([]byte("I want a Camel Blue"))
 	})
 
 	r.Get("/api/v1/stars", func(w http.ResponseWriter, r *http.Request) {
