@@ -16,7 +16,7 @@ spec:
         app: frontend
       containers:
       - name: frontend
-        image: my-frontend
+        image: kind-frontend-sample
         imagePullPolicy: Never
         ports:
         - containerPort: 5000
