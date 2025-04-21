@@ -1,25 +1,27 @@
 # kind-examples
 
-A good ol' friend of mine gave me a kind bootstrap script for me to start to get
-more close to how k8s works. So I decided to hop on an adventure to really
-figure it out. I already had some high-level understanding of how it works and
-what is actually used to. It's interesting to mention that I also maintain a
-couple of servers on my spare time and have long been an advocate of
-self-hosting, but my tooling has mostly been ansible or just raw-dogging
+A good ol' friend of mine gave me a [kind][^kind] bootstrap script to help me
+get closer to how [k8s][^k8s] works. So I decided to embark on an adventure to
+really figure it out. I already had some high-level understanding of how it
+works and what it's actually used for. It's interesting to mention that I also
+maintain a couple of servers in my spare time and have long been an advocate of
+self-hosting, but my tooling has mostly been Ansible or raw-dogging
 commands/scripts.
 
-But Kubernetes always felt like “take something basic and increase its
-complexity into oblivion.” Which is obviously fine for, say, a large company
-that needs serious scalability. But how does that complexity serve a small user
-or a tiny team?
+[^kind]: https://kind.sigs.k8s.io/
+[^k8s]: https://kubernetes.io/
+
+But Kubernetes always felt like "take something basic and complicate it to
+oblivion". Which is obviously fine for, say, a large company that needs serious
+scalability. But how does that complexity serve a small user or a tiny team?
 
 ## Let's be kind with each other
 
 So, `kind`, doesn't exactly _solve_ this problem or answer our question. But it
 provides us with the ability to leverage our knowledge of docker to enter the
 world of k8s, by making it possible to run k8s nodes as Docker containers
-instead of spinning it up VMs or rely on the Mighty Cloud. Installing it was a
-breezy:
+instead of spinning it up VMs or rely on the _Mighty Cloud_™. Installing it on
+Alpine was a breezy:
 
 `apk add kind kubeclt kubeadm # you'll need all of them`
 
@@ -92,29 +94,40 @@ and deploy it there.
 
 Let's put the cluster up first. We'll use the `kind` command to do that.
 
-`kind create cluster --config kind-config.yml`
+```bash
+% kind create cluster --config kind-config.yml
+```
 
 This will create a cluster for us, name it "local", via our configuration file.
 
 We should also make `kubectl` be aware to run all latter commands under this
 context:
 
-`kubeclt config use-context kind-local`
+```
+% kubeclt config use-context kind-local
+```
 
 And now, the magic: we need to build the images, based on our container
 definitions to run these applications. If you actually have a running container
 you want to use you can just skip this entirely. We'll stick with the basics for
 now.
 
-`docker build -t kind-backend-sample src/backend`
+```bash
+% docker build -t kind-backend-sample src/backend
+% docker build -t kind-frontend-sample src/frontend
+```
 
 You'll want to do the same for the frontend and tag it `kind-frontend-sample`.
 By the way, it's a nice opportunity to test it out as well:
 
-`docker run -p 3000:3000 -it kind-backend-sample`, which will run the latest
-image with the tag `kind-backend-sample`. The `p` flag allow us to publish the
-ports we want from the host to the container. Make sure you can run both images
-here, so we have absolute sure our containers works properly as it is.
+```bash
+% docker run -p 3000:3000 -it kind-backend-sample
+```
+
+Which will run the latest image with the tag `kind-backend-sample`. The `-p`
+flag allow us to publish the ports we want from the host to the container. Make
+sure you can run both images here, so we have absolute sure our containers works
+properly as it is.
 
 ### Loading the images
 
@@ -127,14 +140,13 @@ kind load docker-image kind-backend-sample --name local
 kind load docker-image kind-frontend-sample --name local
 ```
 
-You can see we'll patch our deployments to use the local images instead of the
-ones in a registry with these lines:
+In our manifests you'll stumble upon the following lines:
 
 ```yml
-      containers:
-      - name: backend
-        image: kind-backend-sample
-        imagePullPolicy: Never
+containers:
+- name: backend
+  image: kind-backend-sample
+  imagePullPolicy: Never
 ```
 
 This will tell k8s to not look up any registry for the image, and use the local
@@ -166,10 +178,7 @@ of extra stuff as well).
 Let's begin with our side:
 
 ```bash
-[1:09:34] butia ~/s/kind-examples
 % kubectl apply -f backend-deployment.yml
-
-[1:09:46] butia ~/s/kind-examples
 % kubectl apply -f frontend-deployment.yml
 ```
 
@@ -250,61 +259,66 @@ spec:
   type: ClusterIP
 ```
 
-The kind there defined that this object is a service, which routes network
-traffic to Pods. It applies some metadata to identify the service, and then we
-have the spec we want to use it.
+The kind defined there specifies that this object is a **Service**, which routes
+network traffic to Pods. It applies some metadata to identify the service, and
+then we define the spec we want to use.
 
 `spec.selector` is used to identify the Pods that will receive the traffic.
 It'll look for Pods with the label `app=backend`, which is the same label we
 used in the Deployment.
 
 `spec.ports` is used to define the ports that will be used to route the the
-traffic. It's a bit confusing at first, but the gist is:
+traffic. It's a bit confusing at first, but here is the gist:
 - `port` the port the Service exposes **inside the cluster**
 - `targetPort` the port on the Pod/container that the traffic will be forwared
    to
 - `protocol` the protocol used to route the traffic (TCP in our case)
-- `type` the type of service. In our case, we are using `ClusterIP`, which
-  means that this service will only be accessible from inside the cluster. This
-  is the default type, and it's the one we want to use for our backend and
-  frontend. So Frontend Pods and the Ingress can use `backend:80` for example to
-  reach it. You probably have seen this in a `docker-compose` file before.
+- `type` the type of service. We are using `ClusterIP`, which
+   means that this service will only be accessible from inside the cluster.
+   This is the default type, exactly what we want to use for our backend and
+   frontend. So for example, Frontend Pods and the Ingress can use `backend:80`
+   for example to reach it. You probably have seen this in a `docker-compose.yml`
+   file before.
 
-So recaping the service: it gets a internal IP address, reachable from the
-Cluster. It **load-balances** incoming requests accross all healthy Pods
-matching that selector. Pods can be added or removed (scaled up or down) without
-changing how clients reach the service.
+Recapping the Service: it gets an internal IP address, reachable from within the
+cluster. It **load-balances** incoming requests across all healthy Pods matching
+the selector. Pods can be added or removed (scaled up or down) without changing
+how clients reach the Service.
 
-#### How they fit together
+#### How it all fits together
 
-1. Deployment spins up multiple Pods of your applications
-2. Each Pod registers itself with the Service, via its labels or other selectors
-3. The Service provides a single DNS name for them (backend/frontend/db) and
-   their respective IP
-4. Any client inside the cluster (frontend Pods or Ingress) sends traffic to
-   their DNS name (`http://backend:80` or whatever port is defined in `port`)
-5. The Service load-balances to container ports on all available instances of
-   that given application (backend in this example)
+1. A Deployment spins up multiple Pods of your application.
+2. Each Pod is registered with the Service using labels that match the Service’s
+   selector.
+3. The Service provides a single DNS name (e.g., backend, frontend, db) and IP
+   address for the Pods.
+4. Any client inside the cluster (like frontend Pods or the Ingress) sends
+   traffic to that DNS name (e.g., http://backend:80).
+5. The Service load-balances traffic to the container ports of all available
+   instances of the application (in this case, the backend).
 
-It's just separation of concerns. **Deployment** for lifecycle management &
+It's just [separation of concerns]. **Deployment** for lifecycle management &
 scaling. **Service** for networking and load-balancing (update, scaling,
 rollback the application without touching how other components connect to it).
 
-They are often paired, but you don't always need them together in every
-scenario. For example k8s allows you to have `DaemonSets` or `Jobs`, which are
-temporary and don't usually need a service. You can also have Cluster-internal
-only Pods that will only talk to each other (though Services allows better
-Discoverability).
+[^separation of concerns]: https://en.wikipedia.org/wiki/Separation_of_concerns
 
-You'll also notice that they are usually defined in the same file, mostly for
-better organization to apply it all at once.
+This way, you can update, scale, or roll back the application without needing to
+change how other components connect to it.
+
+They’re often used together, but not always. For example, Kubernetes supports
+`DaemonSets` or `Jobs`, which are temporary or run on all nodes and don’t
+usually need a `Service`. You can also have internal-only Pods that talk
+directly to each other, though using Services improves discoverability.
+
+You’ll often see both Deployment and Service defined in the same YAML file,
+mostly for convenience and organization, so everything can be applied at once.
 
 ### Backing it up
 
 After all that jazz, we can check if they are up:
 
 ```bash
- [1:21:34] butia ~/s/kind-examples
 % kubectl get deployments
 NAME       READY   UP-TO-DATE   AVAILABLE   AGE
 backend    1/1     1            1           49m
@@ -316,7 +330,6 @@ instance/replicas running up to speed, and two services as well (one being the
 control plane):
 
 ```bash
- [1:22:33] butia ~/s/kind-examples
 % kubectl get svc
 NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
 backend      ClusterIP   10.96.51.50     <none>        80/TCP    124m
@@ -395,14 +408,13 @@ route everything through a single, neat HTTP gateway like:
 - http://localhost/ -> frontend
 - http://localhost/api -> backend
 
-This is a bit more similar to what you would do in a normal web server, where
-you have a single entry point, and then you route everything through that, which
-we, cavemen are used to call it a reverse proxy. The ingress controller will
-handle all the routing for you, and it will also handle SSL termination, which
-is quite nice.
+This is a bit more like what you'd do with a regular web server — you have a
+single entry point and route everything through it. Us cavemen usually call that
+a reverse proxy. The Ingress controller basically takes care of all the routing
+for you, and it also handles SSL termination, which is pretty sweet.
 
-In order to do that we'll need to download the ingress ctrl deployment, we'll
-grab from the repository first:
+To get that working, we’ll need to install the Ingress controller. First, we’ll
+grab the deployment from the repo:
 
 ```
 curl -L
@@ -459,12 +471,16 @@ ingress-nginx-admission-patch-txqtk         0/1     Completed   0          21s
 ingress-nginx-controller-54d9445ccb-zj8gg   0/1     Pending     0          21s
 ```
 
-The controller should take a minute or two. Go grab some water or something.
-Also, take note of the `-n` flag, which is the namespace. This is important,
-because k8s has the concept of namespaces, which is a way to separate resources.
-This is quite useful, because you can have multiple clusters running on the same
-machine, and you can separate them by namespaces. You can apply that flag mostly
-everywhere, and it will work. You can also set a default namespace too.
+The controller should take a minute or two to spin up — go grab some water or
+something.
+
+Also, take note of the `-n` flag, which stands for namespace. This matters
+because Kubernetes uses namespaces to separate resources, kind of like folders
+or environments. It's super handy if you're running multiple "clusters" (or
+apps) on the same machine and want to keep things organized.
+
+You can use the `-n` flag in most commands, and it’ll just work. You can even
+set a default namespace if you don’t feel like typing it every time.
 
 We can read the logs for the ingress controller to see if everything is working
 fine:
@@ -530,8 +546,8 @@ So, for a recap, we have:
   frontend, acting as a reverse proxy
 - A deployment for each of the backend and frontend, which is running the pods
 
-We can now, do some checks, for example, let's assess where each thing is
-running, since we defined a couple of worker nodes:
+We can now, do some checks, for example, assess where each component is running,
+since we defined a couple of worker nodes:
 
 ```bash
 % kubectl get pods -o wide
@@ -541,8 +557,8 @@ frontend-5d4784859d-9tl7f   1/1     Running   0          35m   10.244.6.2   loca
 ```
 
 Great, we can see that we have one backend running on the first worker node, and
-our frontend was allocated to the fourth worker node. We can also check the
-status of the ingress controller by running:
+our frontend was scheduled to the fourth one. Now let's check on the Ingress
+controller:
 
 ```bash
 % kubectl get pods -n ingress-nginx -o wide
@@ -552,6 +568,7 @@ ingress-nginx-admission-patch-mrtwj         0/1     Completed   2          21m  
 ingress-nginx-controller-54d9445ccb-fpflx   1/1     Running     0          21m   10.244.0.6   local-control-plane   <none>           <none>
 ```
 
-You can see that the ingress controller is running on the control plane, and the
-other, two temporary pods were allocated to the other two worker nodes, but they
-are done (see the `Completed` status).
+We can see the Ingress controller itself is running on the control plane node.
+Those two temporary Pods (`admission-create` and `admission-patch`) were
+scheduled on two other worker nodes - they did their job and exited cleanly
+(hence the `Completed` status).
